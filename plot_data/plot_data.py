@@ -7,7 +7,6 @@ import math
 import os
 
 def main():
-    print(os.getcwd())
     file_idle=open("idle_motor.txt",'r')
     file_shake=open("shake_motor.txt",'r')
     file_idle=open("data0_idle.txt",'r')
