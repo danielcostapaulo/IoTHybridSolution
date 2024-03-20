@@ -1,0 +1,34 @@
+F2_VAR_on_ACC_Y <= 3.91867e-006: idle (158.0/64.0)
+F2_VAR_on_ACC_Y > 3.91867e-006: shake (97.0/3.0)
+
+Number of Leaves  : 	2
+Size of the tree : 	3
+
+
+class:
+ => idle, shake, 
+features:
+ => F1_VAR_on_ACC_X, F2_VAR_on_ACC_Y, F3_VAR_on_ACC_Z, 
+
+
+Mean absolute error	0.776163
+Root mean squared error	0.776538
+ ======= Whole data training with Confidence Factor: 0.9 ========= 
+
+
+===== Confusion Matrix =====
+         	idle     	shake    	<-- classified as
+idle     	158	3	
+shake    	64	97	
+
+Total Number of Instances        : 322
+Correctly Classified Instances   : 255
+Incorrectly Classified Instances : 67
+Kappa Statistic: 0.5
+Accuracy: 79.1926%
+
+Report  :	precision	recall	support	
+idle     	0.981    	0.712	 161
+shake    	0.602    	0.97	 161
+
+avg/total	0.792    	0.841	 322
