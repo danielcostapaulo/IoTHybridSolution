@@ -1,12 +1,11 @@
-import serial as serial
+from serial import Serial
 import pandas as pandas
 import time
 import matplotlib.pyplot as plt
-import csv
 
 def main():
-    ser=serial.Serial('COM5',timeout=1)
-    stop=time.time()+30
+    ser=Serial('COM5',timeout=1)
+    stop=time.time()+240
     file_number=0
     filename="data"+str(file_number)+".txt"
     file=open(filename,'w')
@@ -22,6 +21,7 @@ def main():
             for val in line:
                 file.write(val)
                 file.write(" ")
+                print("   ",val)
             file.write("\n")
 
 
