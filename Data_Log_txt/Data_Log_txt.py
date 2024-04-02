@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def main():
     ser=Serial('COM5',timeout=1)
-    stop=time.time()+240
+    stop=time.time()+50
     file_number=0
     filename="data"+str(file_number)+".txt"
     file=open(filename,'w')
@@ -21,7 +21,6 @@ def main():
             for val in line:
                 file.write(val)
                 file.write(" ")
-                print("   ",val)
             file.write("\n")
 
 

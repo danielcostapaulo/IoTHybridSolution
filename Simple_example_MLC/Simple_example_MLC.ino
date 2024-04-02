@@ -41,8 +41,7 @@
 //NOTE: For this example you need the STEVAL-MKI197V1 board connected to the DIL24 connector of the X-NUCLEO-IKS01A3
 
 // Includes
-#include "LSM6DSOXSensor.h"
-#include "filter.h"
+#include "var.h"
 #include "LSM6DSOX.h"
 
 #ifdef ARDUINO_SAM_DUE
@@ -57,107 +56,73 @@
 #define SerialPort Serial
 
 #define INT_1 INT_IMU
-#define button_pin 2
+#define button_pin 3
 
 //Interrupts.
 volatile int mems_event = 0;
 float x,y,z;
 int GT=0; //Ground truth, 0 is idle, 1 is shake
 // Components
-LSM6DSOXSensor AccGyr(&DEV_I2C, LSM6DSOX_I2C_ADD_L);
-
-// MLC
-ucf_line_t *ProgramPointer;
-int32_t LineCounter;
-int32_t TotalNumberOfLine;
-
+int uh;
 void INT1Event_cb();
 void printMLCStatus(uint8_t status);
 int state=0;
 
 void setup() {
-  uint8_t mlc_out[8];
   // Led.
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(button_pin,INPUT_PULLUP);
+  pinMode(button_pin,INPUT);
 
   // Force INT1 of LSM6DSOX low in order to enable I2C
   pinMode(INT_1, OUTPUT);
 
   digitalWrite(INT_1, LOW);
 
-  delay(200);
-
   // Initialize serial for output.
-  SerialPort.begin(115200);
+  Serial.begin(115200);
   
   // Initialize I2C bus.
-  DEV_I2C.begin();
 
-  AccGyr.begin();
-  IMU_LSM6DSOX.begin();
-  IMU_LSM6DSOX.init(1);
-
-  /* Feed the program to Machine Learning Core */
-  /* Activity Recognition Default program */  
-  ProgramPointer = (ucf_line_t *)filter;
-  TotalNumberOfLine = sizeof(filter) / sizeof(ucf_line_t);
-  SerialPort.println("Activity Recognition for LSM6DSOX MLC");
-  SerialPort.print("UCF Number Line=");
-  SerialPort.println(TotalNumberOfLine);
-
-  for (LineCounter=0; LineCounter<TotalNumberOfLine; LineCounter++) {
-    if(AccGyr.Write_Reg(ProgramPointer[LineCounter].address, ProgramPointer[LineCounter].data)) {
-      SerialPort.print("Error loading the Program to LSM6DSOX at line: ");
-      SerialPort.println(LineCounter);
-      while(1) {
-        // Led blinking.
-        digitalWrite(LED_BUILTIN, HIGH);
-        delay(250);
-        digitalWrite(LED_BUILTIN, LOW);
-        delay(250);
-      }
+  if(!IMU_LSM6DSOX.begin()){
+    while(1){
+      Serial.println("Could not initialize LSM6DSOX");
     }
   }
-
-  SerialPort.println("Program loaded inside the LSM6DSOX MLC");
+  Serial.println("Going to load program now");
+  int ProgramSize=sizeof(var)/sizeof(ucf_line_t);
+  /* Feed the program to Machine Learning Core */
+  /* Activity Recognition Default program */  
+  int val=IMU_LSM6DSOX.Load_MLC(var,ProgramSize);
+  if(!IMU_LSM6DSOX.Load_MLC(var, ProgramSize)){
+    while(1){
+      Serial.println("Couldent Load MLC program");
+    }
+  }
+  
+  Serial.println("Program loaded inside the LSM6DSOX MLC");
 
   //Interrupts.
   pinMode(INT_1, INPUT);
   attachInterrupt(INT_1, INT1Event_cb, RISING);
 
-  /* We need to wait for a time window before having the first MLC status */
-  delay(3000);
+  uh=millis();
 
-  AccGyr.Get_MLC_Output(mlc_out);
-  printMLCStatus(mlc_out[0]);
 }
 
 void loop() {
     //get IMU.MLC event if there is a change
-    if (mems_event) {
+  if (mems_event) {
+    int output=IMU_LSM6DSOX.Get_MLC_Output();
+    printMLCStatus(output);
     mems_event=0;
-    LSM6DSOX_MLC_Status_t status;
-    AccGyr.Get_MLC_Status(&status);
-    if (status.is_mlc1) {
-      uint8_t mlc_out[8];
-      AccGyr.Get_MLC_Output(mlc_out);
-      printMLCStatus(mlc_out[0]);
-    }
   }
   int button_state=digitalRead(button_pin);
-  if(button_state==0){
-    if(GT==0) GT=1;
-    else GT=0;
-    delay(300);
-  }
+  if (digitalRead(button_pin)==HIGH) GT=1;
+  else GT=0;
 
   //print IMU result when available
-  if(IMU.accelerationAvailable()){
-    IMU.readAcceleration(x,y,z);
-    x=x*500;
-    y=y*500;
-    z=z*500;
+  if(IMU_LSM6DSOX.accelerationAvailable()){
+    IMU_LSM6DSOX.readAcceleration(x,y,z);
     Serial.print(x);
     Serial.print("    ");
     Serial.print(y);
@@ -177,15 +142,13 @@ void INT1Event_cb() {
 void printMLCStatus(uint8_t status) {
   switch(status) {
     case 0:
-      //SerialPort.println("Activity: Idle");
       state=0;
       break;
     case 1:
-      //SerialPort.println("Activity: Shaking");
       state=1;
       break;
     default:
-      SerialPort.println("ERROR");
+      Serial.println("ERROR");
       break;
   }	  
 }

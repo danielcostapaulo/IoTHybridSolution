@@ -49,6 +49,7 @@
 #define LSM6DSOX_OUTZ_H_XL          0X2D
 
 #define EMB_FUNC_EN_A               0x04
+#define EMB_FUNC_EN_B               0x05
 #define EMB_FUNC_INT1               0x0A
 #define EMB_FUNC_STATUS             0x12
 #define EMB_FUNC_INIT_A             0x66
@@ -59,6 +60,9 @@
 #define TAP_CFG2                    0x58
 #define WAKE_UP_DUR                 0x5C
 #define WAKE_UP_THS                 0x5B
+
+#define MLC0_SRC                    0x70
+#define MLC_STATUS                  0x15
 
 
 
@@ -74,7 +78,7 @@ LSM6DSOXClass::LSM6DSOXClass(SPIClass& spi, int csPin, int irqPin) :
   _spi(&spi),
   _csPin(csPin),
   _irqPin(irqPin),
-  _spiSettings(10E6, MSBFIRST, SPI_MODE0)
+  _spiSettings(10E5, MSBFIRST, SPI_MODE0)
 {
 }
 
@@ -112,11 +116,27 @@ the energy level of the accelerometer in the following way:
 TODO:make a new variable to define the usage of the gyroscope
 
 */
-void LSM6DSOXClass::init(int level) 
+int LSM6DSOXClass::init(int level) 
 {
-  if(level==1) writeRegister(LSM6DSOX_CTRL1_XL, 0x28);
-  else if(level==2) writeRegister(LSM6DSOX_CTRL1_XL, 0x5C);
-  else writeRegister(LSM6DSOX_CTRL1_XL, 0xAC);
+  int val;
+  _level=level;
+  if(level==1) {
+    val=0x28;
+    _g=4;
+  }
+  else if(level==2){
+    val=0x5C;
+    _g=8;
+  }
+  else{
+    val=0xAC;
+    _g=8;
+  }  
+  if(!writeRegister(LSM6DSOX_CTRL1_XL, val)){
+    return 0;
+  }
+  return 1;
+
   //set the gyroscope control register to work at 104 Hz, 2000 dps and in bypass mode
   //writeRegister(LSM6DSOX_CTRL2_G, 0x4C);
 
@@ -156,9 +176,9 @@ int LSM6DSOXClass::readAcceleration(float& x, float& y, float& z)
     return 0;
   }
 
-  x = data[0] * 4.0 / 32768.0;
-  y = data[1] * 4.0 / 32768.0;
-  z = data[2] * 4.0 / 32768.0;
+  x = data[0] * _g / 32.768;
+  y = data[1] * _g / 32.768;
+  z = data[2] * _g / 32.768;
 
   return 1;
 }
@@ -169,7 +189,7 @@ int LSM6DSOXClass::accelerationAvailable()
     return 1;
   }
 
-  return 0;
+  return readRegister(LSM6DSOX_STATUS_REG);
 }
 
 float LSM6DSOXClass::accelerationSampleRate()
@@ -272,6 +292,34 @@ void LSM6DSOXClass::enableWakeUp()
 float LSM6DSOXClass::gyroscopeSampleRate()
 {
   return 104.0F;
+
+}
+
+
+//This automaticaly enables the MLC and does all of the initialization thanks to UNICO-GUI. More custimization might be required.
+int LSM6DSOXClass::Load_MLC(const ucf_line_t MLC[],int size){ 
+  ucf_line_t *ProgramPointer;
+  int32_t LineCounter;
+  ProgramPointer = (ucf_line_t *)MLC;
+  for (LineCounter=0; LineCounter<size; LineCounter++) {
+    if(!writeRegister(ProgramPointer[LineCounter].address, ProgramPointer[LineCounter].data)) {
+      return -1;
+    }
+  }
+  return 1;
+}
+
+int LSM6DSOXClass::Get_MLC_Status(){
+  writeRegister(FUNC_CFG_ACCESS,0x80);
+  int val=readRegister(MLC_STATUS);
+  writeRegister(FUNC_CFG_ACCESS,0x00);
+  return val;
+}
+int LSM6DSOXClass::Get_MLC_Output(){ 
+  writeRegister(FUNC_CFG_ACCESS,0x80);
+  int val=readRegister(MLC0_SRC);
+  writeRegister(FUNC_CFG_ACCESS,0x00);
+  return val;
 }
 
 int LSM6DSOXClass::readRegister(uint8_t address)
