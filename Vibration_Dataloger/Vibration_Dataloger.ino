@@ -3,14 +3,14 @@
 #define button_pin 2
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(1000000);
   while(!Serial); //wait untill Serial is available
   pinMode(button_pin,INPUT_PULLUP);
   if(!IMU_LSM6DSOX.begin()){
     Serial.print("Failed to initialize IMU");
     while(1);
   }
-  IMU_LSM6DSOX.init(1);
+  IMU_LSM6DSOX.init(3);
 }
 
 void loop() {
@@ -22,9 +22,6 @@ void loop() {
   }
   if(IMU.accelerationAvailable()){
     IMU.readAcceleration(x,y,z);
-    x=x*1000;
-    y=y*1000;
-    z=z*1000;
     Serial.print(x);
     Serial.print("    ");
     Serial.print(y);

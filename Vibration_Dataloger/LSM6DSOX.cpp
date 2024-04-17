@@ -49,6 +49,7 @@
 #define LSM6DSOX_OUTZ_H_XL          0X2D
 
 #define EMB_FUNC_EN_A               0x04
+#define EMB_FUNC_EN_B               0x05
 #define EMB_FUNC_INT1               0x0A
 #define EMB_FUNC_STATUS             0x12
 #define EMB_FUNC_INIT_A             0x66
@@ -59,6 +60,19 @@
 #define TAP_CFG2                    0x58
 #define WAKE_UP_DUR                 0x5C
 #define WAKE_UP_THS                 0x5B
+
+#define MLC0_SRC                    0x70
+#define MLC_STATUS                  0x15
+
+#define FIFO_CTRL1                  0x07
+#define FIFO_CTRL2                  0x08
+#define FIFO_CTRL3                  0x09
+#define FIFO_CTRL4                  0x0A
+#define INT1_CTRL                   0x0D
+#define INT2_CTRL                   0x0E
+#define FIFO_STATUS1                0x3A
+#define FIFO_STATUS2                0x3B
+#define FIFO_DATA_OUT_X_L           0x79 
 
 
 
@@ -74,7 +88,7 @@ LSM6DSOXClass::LSM6DSOXClass(SPIClass& spi, int csPin, int irqPin) :
   _spi(&spi),
   _csPin(csPin),
   _irqPin(irqPin),
-  _spiSettings(10E6, MSBFIRST, SPI_MODE0)
+  _spiSettings(10E5, MSBFIRST, SPI_MODE0)
 {
 }
 
@@ -105,30 +119,37 @@ int LSM6DSOXClass::begin()
 /*
 To initialize, its necessasry to use the function bellow in which level defines
 the energy level of the accelerometer in the following way:
-1-low power->
-2-medium power->
-3-high power->
+1-low power-> 26Hz,4g
+2-medium power-> 208Hz,8g
+3-high power-> 6,6kHz,8g
 
 TODO:make a new variable to define the usage of the gyroscope
 
 */
-void LSM6DSOXClass::init(int level) 
+int LSM6DSOXClass::init(int level) 
 {
-  if(level==1) writeRegister(LSM6DSOX_CTRL1_XL, 0x28);
-  else if(level==2) writeRegister(LSM6DSOX_CTRL1_XL, 0x5C);
-  else writeRegister(LSM6DSOX_CTRL1_XL, 0xAC);
-  //set the gyroscope control register to work at 104 Hz, 2000 dps and in bypass mode
-  //writeRegister(LSM6DSOX_CTRL2_G, 0x4C);
+  int val;
+  _level=level;
+  if(level==1) {
+    val=0x28;
+    _g=4;
+  }
+  else if(level==2){
+    val=0x5C;
+    _g=8;
+  }
+  else{
+    val=0xAC;
+    _g=8;
+  }  
+  if(!writeRegister(LSM6DSOX_CTRL1_XL, val)){
+    return 0;
+  }
+    if(!writeRegister(LSM6DSOX_CTRL6_C,0x10)){ //this register will remove the accelerometer from high performance mode
+    return 0;
+  }
 
-  // Set the Accelerometer control register to work at 104 Hz, 4 g,and in bypass mode and enable ODR/4
-  // low pass filter (check figure9 of LSM6DSOX's datasheet)
-  
-
-  // set gyroscope power mode to high performance and bandwidth to 16 MHz
-  //writeRegister(LSM6DSOX_CTRL7_G, 0x00);
-
-  // Set the ODR config register to ODR/4
-  //writeRegister(LSM6DSOX_CTRL8_XL, 0x09);
+  return 1;
 }
 
 void LSM6DSOXClass::end()
@@ -156,9 +177,9 @@ int LSM6DSOXClass::readAcceleration(float& x, float& y, float& z)
     return 0;
   }
 
-  x = data[0] * 4.0 / 32768.0;
-  y = data[1] * 4.0 / 32768.0;
-  z = data[2] * 4.0 / 32768.0;
+  x = data[0] * _g / 32.768;
+  y = data[1] * _g / 32.768;
+  z = data[2] * _g / 32.768;
 
   return 1;
 }
@@ -272,6 +293,145 @@ void LSM6DSOXClass::enableWakeUp()
 float LSM6DSOXClass::gyroscopeSampleRate()
 {
   return 104.0F;
+
+}
+
+
+//This automaticaly enables the MLC and does all of the initialization thanks to UNICO-GUI. More custimization might be required.
+int LSM6DSOXClass::Load_MLC(const ucf_line_t MLC[],int size){ 
+  ucf_line_t *ProgramPointer;
+  int32_t LineCounter;
+  ProgramPointer = (ucf_line_t *)MLC;
+  for (LineCounter=0; LineCounter<size; LineCounter++) {
+    if(!writeRegister(ProgramPointer[LineCounter].address, ProgramPointer[LineCounter].data)) {
+      return -1;
+    }
+  }
+  return 1;
+}
+
+int LSM6DSOXClass::Get_MLC_Status(){
+  writeRegister(FUNC_CFG_ACCESS,0x80);
+  int val=readRegister(MLC_STATUS);
+  writeRegister(FUNC_CFG_ACCESS,0x00);
+  return val;
+}
+int LSM6DSOXClass::Get_MLC_Output(){ 
+  writeRegister(FUNC_CFG_ACCESS,0x80);
+  int val=readRegister(MLC0_SRC);
+  writeRegister(FUNC_CFG_ACCESS,0x00);
+  return val;
+}
+
+/*
+To use the fifo, its neccessary to define its batch rate which is in the following way:
+1-low power-> 26Hz
+2-medium power-> 208Hz
+3-high power-> 6,6kHz
+
+*/
+int LSM6DSOXClass::setFIFOBRT(int level){
+  int val=0;
+  if(level==1)val=0x02;
+  else if(level==2)val=0x05;
+  else val=0x0A;
+  if(!writeRegister(FIFO_CTRL3,val)) return 0;
+  return 1;
+}
+
+
+/*
+The function bellow selects the desired mode:
+
+0->bypass mode (FIFO clears and is disabled)
+1->Continous mode (FIFO writes on top of old samples)
+
+*/
+int LSM6DSOXClass::setFIFOMode(int mode){
+  int val=0;
+  if (mode==0) val=0x00;
+  else if(mode==1) val=0x06;
+  if(!writeRegister(FIFO_CTRL4,val)) return 0;
+  return 1;
+}
+/*
+The function bellow selects the interrupt pin (1 or 2) that will be activated when the waterlevel threshold is reached:
+
+1-> INT1
+2-> INT2
+
+*/
+int LSM6DSOXClass::setFIFOInterrupt(int pin){
+
+  if (pin==1) {
+    if(!writeRegister(INT1_CTRL,0x20)) return 0;
+    return 1;
+  }
+  else{
+    if(!writeRegister(INT2_CTRL,0x04)) return 0;
+    return 1;
+  } 
+}
+
+/*
+The function bellow defines the waterlevel threshold value:
+
+1->26
+2->130
+3->255
+
+*/
+int LSM6DSOXClass::setFIFOWT(int wtl){
+  int val=0;
+  if(wtl==1) val=0x1A;
+  else if(wtl==2) val=0x82;
+  else val=0xFF;
+  if(!writeRegister(FIFO_CTRL1,val)){
+    return 0;
+  }
+  if(!writeRegister(FIFO_CTRL2,0x00)){
+    return 0;
+  }
+  return 1;
+
+}
+
+int LSM6DSOXClass::setFIFOlimit(int lim){
+  if(!writeRegister(FIFO_CTRL1,0xFF)) return 0;
+  if(!writeRegister(FIFO_CTRL2,0x81)) return 0;
+  return 1;
+}
+
+
+
+int LSM6DSOXClass::getFIFOSamples(){
+  int n_samples1=0;
+  n_samples1=readRegister(FIFO_STATUS1);
+  int n_samples2=readRegister(FIFO_STATUS2);
+    if(n_samples1==-1 || n_samples2==-1){
+    return -1;
+  }
+  int mask=0b00000011;
+  n_samples2=n_samples2&mask;
+  int n_samples=(n_samples2<<8)|n_samples1;
+
+  return n_samples;
+}
+
+int LSM6DSOXClass::getFIFOAcc(float& x,float& y, float& z){
+  int16_t data[3];
+  if (!readRegisters(FIFO_DATA_OUT_X_L, (uint8_t*)data, sizeof(data))) {
+    x = NAN;
+    y = NAN;
+    z = NAN;
+
+    return 0;
+  }
+  x = data[0] * _g / 32.768;
+  y = data[1] * _g / 32.768;
+  z = data[2] * _g / 32.768;
+
+  return 1;
 }
 
 int LSM6DSOXClass::readRegister(uint8_t address)

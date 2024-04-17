@@ -41,7 +41,7 @@
 //NOTE: For this example you need the STEVAL-MKI197V1 board connected to the DIL24 connector of the X-NUCLEO-IKS01A3
 
 // Includes
-#include "var.h"
+#include "Models\FV3.h"
 #include "LSM6DSOX.h"
 
 #ifdef ARDUINO_SAM_DUE
@@ -57,6 +57,7 @@
 
 #define INT_1 INT_IMU
 #define button_pin 3
+
 
 //Interrupts.
 volatile int mems_event = 0;
@@ -89,11 +90,10 @@ void setup() {
     }
   }
   Serial.println("Going to load program now");
-  int ProgramSize=sizeof(var)/sizeof(ucf_line_t);
+  int ProgramSize=sizeof(FV3)/sizeof(ucf_line_t);
   /* Feed the program to Machine Learning Core */
   /* Activity Recognition Default program */  
-  int val=IMU_LSM6DSOX.Load_MLC(var,ProgramSize);
-  if(!IMU_LSM6DSOX.Load_MLC(var, ProgramSize)){
+  if(!IMU_LSM6DSOX.Load_MLC(FV3, ProgramSize)){
     while(1){
       Serial.println("Couldent Load MLC program");
     }
@@ -105,7 +105,6 @@ void setup() {
   pinMode(INT_1, INPUT);
   attachInterrupt(INT_1, INT1Event_cb, RISING);
 
-  uh=millis();
 
 }
 

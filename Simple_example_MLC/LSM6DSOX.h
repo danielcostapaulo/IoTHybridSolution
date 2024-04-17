@@ -56,6 +56,15 @@ class LSM6DSOXClass {
     int Get_MLC_Status();
     int Get_MLC_Output();
 
+        //FIFO features
+    int setFIFOBRT(int level);
+    int setFIFOMode(int mode);
+    int setFIFOInterrupt(int pin);
+    int setFIFOWT(int wtl);
+    int getFIFOSamples();
+    int setFIFOlimit(int lim);
+    int getFIFOAcc(float& x,float& y,float& z);
+
   private:
     int readRegister(uint8_t address);
     int readRegisters(uint8_t address, uint8_t* data, size_t length);
