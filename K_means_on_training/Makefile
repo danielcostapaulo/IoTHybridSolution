@@ -8,7 +8,7 @@ SRC_DIR = src
 # Build directory
 BUILD_DIR = build
 # Output executable name
-TARGET = extract_features
+TARGET = Kmeans_ot
 
 # List of all source files
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
@@ -42,17 +42,6 @@ $(BUILD_DIR)/interrupt.h.gch: $(SRC_DIR)/interrupt.h | $(BUILD_DIR)
 
 $(BUILD_DIR)/aprox_fft.h.gch: $(SRC_DIR)/aprox_fft.h | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $< -o $@
-
-
-$(BUILD_DIR)/peakfinder1_peak.h.gch: $(SRC_DIR)/peakfinder1_peak.h| $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $< -o $@
-
-$(BUILD_DIR)/peak_handler.h.gch: $(SRC_DIR)/peak_handler.h $(BUILD_DIR) zscore_peak.h.gch| $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $< -o $@
-
-$(BUILD_DIR)/zscore_peak.h.gch: $(SRC_DIR)/zscore_peak.h| $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $< -o $@
-
 
 # Create the build directory
 $(BUILD_DIR):

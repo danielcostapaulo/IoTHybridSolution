@@ -100,11 +100,11 @@ int LSM6DSOXClass::begin()
   if (_spi != NULL) {
     pinMode(_csPin, OUTPUT);
     digitalWrite(_csPin, HIGH);
-    _spi->begin();
+    _spi->begin(12,13,11,10);
   } else {
     _wire->begin();
   }
-
+  readRegister(LSM6DSOX_WHO_AM_I_REG);
   if (!(readRegister(LSM6DSOX_WHO_AM_I_REG) == 0x6C || readRegister(LSM6DSOX_WHO_AM_I_REG) == 0x69)) {
     return readRegister(LSM6DSOX_WHO_AM_I_REG);
   }
@@ -117,12 +117,11 @@ int LSM6DSOXClass::begin()
 /*
 To initialize, its necessasry to use the function bellow in which level defines
 the energy level of the accelerometer in the following way:
-1-low power-> 26Hz,4g
-2-medium power-> 208Hz,8g
+1-low power-> 26Hz,4g 
+2-medium power-> 1.66kHz,8g 
 3-high power-> 6,6kHz,8g
 
-TODO:make a new variable to define the usage of the gyroscope
-
+The logic of these values are for 1 to be used when only using the accelerometer MLC, 2 for state prediction and 3 for gathering data.
 */
 int LSM6DSOXClass::init(int level) 
 {
@@ -133,7 +132,7 @@ int LSM6DSOXClass::init(int level)
     _g=4;
   }
   else if(level==2){
-    val=0x5C;
+    val=0x8C;
     _g=8;
   }
   else{
@@ -143,10 +142,10 @@ int LSM6DSOXClass::init(int level)
   if(!writeRegister(LSM6DSOX_CTRL1_XL, val)){
     return 0;
   }
-    if(!writeRegister(LSM6DSOX_CTRL6_C,0x10)){ //this register will remove the accelerometer from high performance mode
+
+  if(!writeRegister(LSM6DSOX_CTRL6_C,0x10)){ //this register will remove the accelerometer from high performance mode
     return 0;
   }
-
   return 1;
 }
 
@@ -162,6 +161,7 @@ void LSM6DSOXClass::end()
     _wire->end();
   }
 }
+
 
 int LSM6DSOXClass::readAcceleration(float& x, float& y, float& z)
 {
@@ -299,7 +299,7 @@ float LSM6DSOXClass::gyroscopeSampleRate()
 int LSM6DSOXClass::Load_MLC(const ucf_line_t MLC[],int size){ 
   ucf_line_t *ProgramPointer;
   int32_t LineCounter;
-  ProgramPointer = (ucf_line_t *)MLC;
+  ProgramPointer = (ucf_line_t *) MLC;
   for (LineCounter=0; LineCounter<size; LineCounter++) {
     if(!writeRegister(ProgramPointer[LineCounter].address, ProgramPointer[LineCounter].data)) {
       return -1;
@@ -435,23 +435,27 @@ int LSM6DSOXClass::getFIFOAcc(float& x,float& y, float& z){
 int LSM6DSOXClass::readRegister(uint8_t address)
 {
   uint8_t value;
-  
+
   if (readRegisters(address, &value, sizeof(value)) != 1) {
     return -1;
   }
-  
+
   return value;
 }
 
 int LSM6DSOXClass::readRegisters(uint8_t address, uint8_t* data, size_t length)
 {
+  uint8_t test_val;
   if (_spi != NULL) {
     _spi->beginTransaction(_spiSettings);
     digitalWrite(_csPin, LOW);
     _spi->transfer(0x80 | address);
-    _spi->transfer(data, length);
+    for(int i=0;i<length;i++){
+      data[i]=_spi->transfer(0x00);
+    }
     digitalWrite(_csPin, HIGH);
     _spi->endTransaction();
+    
   } else {
     _wire->beginTransmission(_slaveAddress);
     _wire->write(address);
@@ -490,9 +494,3 @@ int LSM6DSOXClass::writeRegister(uint8_t address, uint8_t value)
   }
   return 1;
 }
-
-#ifdef LSM6DS_DEFAULT_SPI
-LSM6DSOXClass IMU_LSM6DSOX(LSM6DS_DEFAULT_SPI, PIN_SPI_SS1, LSM6DS_INT);
-#else
-LSM6DSOXClass IMU_LSM6DSOX(Wire, LSM6DSOX_ADDRESS);
-#endif

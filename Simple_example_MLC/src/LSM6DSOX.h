@@ -1,4 +1,3 @@
-#include "lsm6dsox_reg.h"
 /*
   This file is part of the Arduino_LSM6DSOX library.
   Copyright (c) 2021 Arduino SA. All rights reserved.
@@ -21,6 +20,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
+#include "Models\FEM3_1.h"
+
 
 class LSM6DSOXClass {
   public:
