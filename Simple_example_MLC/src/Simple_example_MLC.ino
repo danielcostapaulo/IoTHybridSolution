@@ -41,7 +41,7 @@
 //NOTE: For this example you need the STEVAL-MKI197V1 board connected to the DIL24 connector of the X-NUCLEO-IKS01A3
 
 // Includes
-#include "Models\FEM3_1.h"
+#include "Models\idk.h"
 #include "LSM6DSOX.h"
 #include <SPI.h>
 
@@ -95,10 +95,10 @@ void setup() {
     while(1);
   }
   Serial.println("Going to load program now");
-  int ProgramSize=sizeof(FEM3_1)/sizeof(ucf_line_t);
+  int ProgramSize=sizeof(idk)/sizeof(ucf_line_t);
   /* Feed the program to Machine Learning Core */
   /* Activity Recognition Default program */  
-  if(!Acc.Load_MLC(FEM3_1, ProgramSize)){
+  if(!Acc.Load_MLC(idk, ProgramSize)){
     while(1){
       Serial.println("Couldent Load MLC program");
     }

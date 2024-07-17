@@ -106,6 +106,7 @@ int LSM6DSOXClass::begin()
   }
   readRegister(LSM6DSOX_WHO_AM_I_REG);
   if (!(readRegister(LSM6DSOX_WHO_AM_I_REG) == 0x6C || readRegister(LSM6DSOX_WHO_AM_I_REG) == 0x69)) {
+
     return readRegister(LSM6DSOX_WHO_AM_I_REG);
   }
 
