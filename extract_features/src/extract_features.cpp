@@ -33,13 +33,13 @@ int main(){
     }
     ofstream feature_file;          
     ifstream raw_file;
-    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor");
+    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC");
     DIR *dr=opendir(".");
     struct dirent *en;
     if (dr) {
       while ((en = readdir(dr)) != NULL) {
         if(en->d_name[0]=='s' || en->d_name[0]=='l'){      
-            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor");
+            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC");
             //doing file name operations-----------------
             char raw_file_name[100];
             strcpy(raw_file_name,en->d_name);
@@ -53,7 +53,7 @@ int main(){
             char feature_file_name[100];
             strcpy(feature_file_name,raw_file_name);
             strcat(feature_file_name,"_Feature.txt");
-            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor/Features");
+            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC/Features");
             cout<<"Performing feature extraction on file:";
             cout<<feature_file_name<<endl;
             feature_file.open(feature_file_name,ios::out);
