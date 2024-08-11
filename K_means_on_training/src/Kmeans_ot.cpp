@@ -14,7 +14,7 @@ using namespace std;
 #define SAMPLING_RATE 6666
 #define WINDOW FFT_WIN_TYPE_HAMMING
 
-#define n_of_samples_per_state 2000
+#define n_of_samples_per_state 5000
 #define test_ratio 0.3
 
 int FFT_buffer[SAMPLES];
@@ -28,7 +28,7 @@ int main(){
       signal_abcissa[i]=float(i)*float(SAMPLING_RATE)/(float(SAMPLES));
     }
     ifstream raw_file;
-    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC");
+    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor");
     //first get all of the features using FFT
     vector<vector<vector<int>>> features;
     DIR *dr=opendir(".");

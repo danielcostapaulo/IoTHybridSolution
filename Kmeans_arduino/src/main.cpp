@@ -115,10 +115,10 @@ void loop() {
     //--------------------------------------------------------------------------------
     kmeans_state=clf.predict(Sample_to_pred);
     sample_n=0;
+    Serial.print("ACC state:");Serial.print(state);Serial.print("; Kmeans state:");Serial.println(kmeans_state);
   }
 
   //relevant prints
-  Serial.print("ACC state:");Serial.print(state);Serial.print("; Kmeans state:");Serial.println(kmeans_state);
 }
 
 void INT1Event_cb() {
