@@ -1,7 +1,7 @@
 #include "LSM6DSOX.h"
 #include <SPI.h>
 #include "fft_handler.h"
-#include "Kmeans.h"
+#include "Models\RF_model.h"
 
 
 #define INT_1 1
@@ -33,10 +33,12 @@ int FFTbuffer[SAMPLES];   // FFT sample buffer
 float FFT_amp[SAMPLES];   // FFT output
 FFT_handler FFT=FFT_handler(SAMPLES,1, FFTbuffer, FFT_amp);
 
-//Kmeans
-int Sample_to_pred[SAMPLES*3];
-Kmeans_OT clf;
-int kmeans_state=-1;
+//Classifier
+float Sample_to_pred[SAMPLES*3];
+Eloquent::ML::Port::RandomForest clf;
+int classifier_pred=-1;
+int classifier_counter;
+int current_pred;
 
 
 
@@ -91,34 +93,43 @@ void loop() {
   //get Acc values if available
   if(Acc.accelerationAvailable()){
     Acc.readAcceleration(x,y,z);
-    x_axis[sample_n]=x;
-    y_axis[sample_n]=y;
-    z_axis[sample_n]=z;
+    x_axis[sample_n]=x*10;
+    y_axis[sample_n]=y*10;
+    z_axis[sample_n]=z*10;
     sample_n++;
   }
 
-  //buffers are full and ready for FFT & Kmeans
+  //buffers are full and ready for FFT & clasisfier
   if(sample_n==SAMPLES-1){
-    //-----------------------------------make FFT of all axis-------------------------
+    //make FFT of all axis
     FFT.Windowing(FFT_WIN_TYPE_HAMMING);
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=x_axis[i];
     FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i]=FFT_amp[i];
+    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i]=float(FFT_amp[i]);
 
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=y_axis[i];
     FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+SAMPLES]=FFT_amp[i];
+    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+SAMPLES]=float(FFT_amp[i]);
     
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=z_axis[i];
     FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+2*SAMPLES]=FFT_amp[i];
-    //--------------------------------------------------------------------------------
-    kmeans_state=clf.predict(Sample_to_pred);
-    sample_n=0;
-    Serial.print("ACC state:");Serial.print(state);Serial.print("; Kmeans state:");Serial.println(kmeans_state);
-  }
+    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+2*SAMPLES]=float(FFT_amp[i]);
+    //perform classifier model
 
-  //relevant prints
+    classifier_pred=clf.predict(Sample_to_pred);
+    if (classifier_pred!=current_pred){
+      classifier_counter++;
+    }
+    else if(classifier_counter>0){
+      classifier_counter--;
+    }
+    if(classifier_counter==5){
+      current_pred=classifier_pred;
+      current_pred=0;
+    }
+    Serial.print("ACC state:");Serial.print(state);Serial.print(";Classifier state:");Serial.println(classifier_pred);
+    sample_n=0;
+  }
 }
 
 void INT1Event_cb() {

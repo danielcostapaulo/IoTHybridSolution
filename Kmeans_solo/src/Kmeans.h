@@ -6,12 +6,13 @@
 class Kmeans_OT{
   public:
     int n_of_samples_to_train;
-    int clusters[30][SAMPLES*3];
-    float max_dist[30];
+    int clusters[20][SAMPLES*3];
+    float max_dist[20];
     int n_of_clusters=0;
     Kmeans_OT();
     Kmeans_OT(int number_of_anomalies);
     int predict(int sample_to_pred[SAMPLES*3]);
+    int* get_anomaly(int anomaly_n);
   private:
     int switch_to_make_new_cluster;
     int last_anomaly=0;
