@@ -1,6 +1,7 @@
 #include "LSM6DSOX.h"
 #include <SPI.h>
 #include "fft_handler.h"
+#include "peakfinder1_peak.h"
 #include "Kmeans.h"
 #include "Update.h"
 #include <Arduino_MQTT_Client.h>
@@ -8,15 +9,19 @@
 #include <WiFi.h>
 
 //Things for Thingsboard
-//constexpr char WIFI_SSID[] = "MEO-A600E0";
-constexpr char WIFI_SSID[] = "DaniS24";
-//constexpr char WIFI_PASSWORD[] = "f1ca76e7f4";
-constexpr char WIFI_PASSWORD[] = "nineplusten";
+constexpr char WIFI_SSID[] = "MEO-A600E0";
+//constexpr char WIFI_SSID[] = "DaniS24";
+constexpr char WIFI_PASSWORD[] = "f1ca76e7f4";
+//constexpr char WIFI_PASSWORD[] = "nineplusten";
 constexpr char TOKEN[] = "DlrFvqezcvvPmS1KqIJO";
 constexpr char THINGSBOARD_SERVER[] = "iot.istartlab.tecnico.ulisboa.pt";
 constexpr uint16_t THINGSBOARD_PORT = 1883U;
 constexpr uint32_t SERIAL_DEBUG_BAUD = 115200U;
-constexpr uint32_t MAX_MESSAGE_SIZE = 7800U;
+constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
+
+constexpr float telesendinterval = 5000U;
+uint32_t prevdatasent;
+
 // Initialize underlying client, used to establish a connection
 WiFiClient wifiClient;
 // Initalize the Mqtt client instance
@@ -81,14 +86,26 @@ int sample_n=0;
 int FFTbuffer[SAMPLES];   // FFT sample buffer
 float FFT_amp[SAMPLES];   // FFT output
 FFT_handler FFT=FFT_handler(SAMPLES,1, FFTbuffer, FFT_amp);
+//FFT PEAK
+#define PEAK_N 6
+#define PEAK_THRESHOLD 0
+#define PEAK_INTERVAL 60
+float peak_value[PEAK_N];
+float peak_amps[PEAK_N];
+float signal_abcissa[SAMPLES];
+float peak_value_buffer[PEAK_N*3];
+float peak_amps_buffer[PEAK_N*3];
+PeakFinder1 FFT_peak=PeakFinder1(SAMPLE_FREQ, SAMPLES,PEAK_N, peak_value, peak_amps, FFT_amp, signal_abcissa);
+
 
 //Kmeans
 int Sample_to_pred[SAMPLES*3];
 Kmeans_OT clf;
 int kmeans_state=-1;
 
-int* anomaly_to_thingsboard;
-char anomaly_str[SAMPLES*3*10+1];
+int samples_to_send=200;
+int samples_sent[30]={0};
+char anomaly_str[PEAK_N*3*2*10+1];
 
 void setup() {
   // Initalize serial connection
@@ -176,38 +193,60 @@ void loop() {
   //buffers are full and ready for FFT & Kmeans
   if(sample_n==SAMPLES-1){
     //-----------------------------------make FFT of all axis-------------------------
-    FFT.Windowing(FFT_WIN_TYPE_HAMMING);
+FFT.Windowing(FFT_WIN_TYPE_HAMMING);
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=x_axis[i];
     FFT.FFT();
+    //FFT_amp[0]=0;
+    FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
+    for(int i=0;i<PEAK_N;i++){
+      peak_value_buffer[i]=peak_value[i];
+      peak_amps_buffer[i]=peak_amps[i];
+    }
     for(int i=0;i<SAMPLES;i++) Sample_to_pred[i]=FFT_amp[i];
 
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=y_axis[i];
     FFT.FFT();
+    //FFT_amp[0]=0;
+    FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
+    for(int i=0;i<PEAK_N;i++){
+      peak_value_buffer[i+PEAK_N]=peak_value[i];
+      peak_amps_buffer[i+PEAK_N]=peak_amps[i];
+    }
     for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+SAMPLES]=FFT_amp[i];
     
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=z_axis[i];
     FFT.FFT();
+    //FFT_amp[0]=0;
+    FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
+    for(int i=0;i<PEAK_N;i++){
+      peak_value_buffer[i+2*PEAK_N]=peak_value[i];
+      peak_amps_buffer[i+2*PEAK_N]=peak_amps[i];
+    }
     for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+2*SAMPLES]=FFT_amp[i];
-    //--------------------------------------------------------------------------------
+   //--------------------------------------------------------------------------------
     kmeans_state=clf.predict(Sample_to_pred);
     sample_n=0;
     Serial.print("ACC state:");Serial.print(state);Serial.print("; Kmeans state:");Serial.println(kmeans_state);
     //send the anomalies to thingsboard for future use
-    if(kmeans_state==-2){
-      Serial.print("Sending anomalies to Thingsboard");
-      for(int i=0;i<50;i++){
-        anomaly_to_thingsboard=clf.get_anomaly(i);
-        for(int j=0;j<SAMPLES*3;j++){
-          if(j<SAMPLES*3-1) sprintf(&anomaly_str[j * 10], "%09d,", anomaly_to_thingsboard[j]);
-          else sprintf(&anomaly_str[j * 10], "%09d", anomaly_to_thingsboard[j]);
+    if(kmeans_state>=0 && samples_sent[kmeans_state]<samples_to_send && millis()-prevdatasent>telesendinterval){
+      Serial.print("Sending anomalies to Thingsboard:");
+      Serial.print(samples_sent[kmeans_state]);
+      for(int j=0;j<PEAK_N*3;j++){
+        if(j<PEAK_N*3-1){
+          sprintf(&anomaly_str[(j*2) * 10], "%09d,", peak_value_buffer[j]);
+          sprintf(&anomaly_str[(j*2+1) * 10], "%09d,", peak_amps_buffer[j]);
         }
-        anomaly_str[SAMPLES*3*10] = '\0';
-        tb.sendTelemetryData("anomaly_sample",anomaly_str);
-        tb.sendTelemetryData("class",clf.n_of_clusters-1);
-        Serial.print(".");
-        tb.loop();
+        else{
+          sprintf(&anomaly_str[(j*2) * 10], "%09d,", peak_value_buffer[j]);
+          sprintf(&anomaly_str[(j*2+1) * 10], "%09d", peak_amps_buffer[j]);
+        
+        } 
       }
+      anomaly_str[PEAK_N*2*3*10] = '\0';
+      tb.sendTelemetryData("class",clf.n_of_clusters-1);
       Serial.println();
+      prevdatasent=millis();
+      samples_sent[kmeans_state]++;
     }
   }
 

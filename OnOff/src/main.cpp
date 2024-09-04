@@ -15,8 +15,8 @@
 
 
 
-constexpr char WIFI_SSID[] = "iStartLab";
-constexpr char WIFI_PASSWORD[] = "12345678";
+constexpr char WIFI_SSID[] = "MEO-A600E0";
+constexpr char WIFI_PASSWORD[] = "f1ca76e7f4";
 
 // See https://thingsboard.io/docs/getting-started-guides/helloworld/
 // to understand how to obtain an access token

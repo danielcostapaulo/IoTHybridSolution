@@ -3,6 +3,7 @@
 #include "fft_handler.h"
 #include "Kmeans.h"
 #include "peakfinder1_peak.h"
+#include "OTA.h"
 
 #define INT_1 1
 #define GT_pin 2

@@ -1,11 +1,14 @@
 #include "LSM6DSOX.h"
 #include <SPI.h>
 #include "fft_handler.h"
+#include "peakfinder1_peak.h"
 #include "Models\RF_model.h"
 
 
 #define INT_1 1
 #define GT_pin 2
+
+//Important note: Some variables are not declared in this file but at the end of the ML model, if you cant find a variable,please check said file.
 
 //Objects related to the Accelerometer
 SPIClass dev_spi;
@@ -32,8 +35,65 @@ int sample_n=0;
 int FFTbuffer[SAMPLES];   // FFT sample buffer
 float FFT_amp[SAMPLES];   // FFT output
 FFT_handler FFT=FFT_handler(SAMPLES,1, FFTbuffer, FFT_amp);
+//FFT PEAK
+#define PEAK_THRESHOLD 0
+#define PEAK_INTERVAL 60
+float peak_value[PEAK_N];
+float peak_amps[PEAK_N];
+float signal_abcissa[SAMPLES];
+float peak_value_buffer[PEAK_N*3];
+float peak_amps_buffer[PEAK_N*3];
+PeakFinder1 FFT_peak=PeakFinder1(SAMPLE_FREQ, SAMPLES,PEAK_N, peak_value, peak_amps, FFT_amp, signal_abcissa);
+
+//Some variables and functions to sort the values based on frequency and not amplitude
+struct sort_array
+{
+    float freq;
+    float amp;
+};
+
+int compare(const void *a,const void *b){ 
+    struct sort_array *a1=(struct sort_array *) a;
+    struct sort_array *a2=(struct sort_array *) b;
+    if ((*a1).freq >(*a2).freq) return 1;
+    else if ((*a1).freq <(*a2).freq) return -1;
+    else return 0;
+}
+sort_array sort_peak[PEAK_N];
+
+//This function is utilized to perform the feature extraction of the axis and insert it into the sample
+
+void add_to_sample_to_pred(float Sample_to_pred[],int axis[],int section){ 
+  //do FFT
+  for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=axis[i];
+  FFT.FFT();
+  if(USE_PEAK){ //use peaks instead of the whole FFT
+    FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
+    if(SORT){ //sort based on freuqncy and not amplitude
+      for(int i=0;i<PEAK_N;i++){
+        sort_peak[i].freq=peak_value[i];
+        sort_peak[i].amp=peak_amps[i];
+      }
+      qsort(sort_peak,PEAK_N,sizeof(sort_peak[0]),compare);
+      for(int i=0;i<PEAK_N;i++){
+        Sample_to_pred[(i+PEAK_N*(section-1))*2]=sort_peak[i].freq;
+        Sample_to_pred[(i+PEAK_N*(section-1))*2+1]=sort_peak[i].amp;
+      }
+    }
+    else{
+      for(int i=0;i<PEAK_N;i++){
+        Sample_to_pred[(i+PEAK_N*(section-1))*2]=peak_value[i];
+        Sample_to_pred[(i+PEAK_N*(section-1))*2+1]=peak_amps[i];
+      }
+    }
+  }
+  else{
+    for(int i=0;i<SAMPLES;i++) Sample_to_pred[(i+SAMPLES*(section-1))]=float(FFT_amp[i]);
+  }    
+}
 
 //Classifier
+
 float Sample_to_pred[SAMPLES*3];
 Eloquent::ML::Port::RandomForest clf;
 int classifier_pred=-1;
@@ -76,6 +136,10 @@ void setup() {
   //interrupts for ACC DT
   pinMode(INT_1, INPUT);
   attachInterrupt(INT_1, INT1Event_cb, RISING);
+  //FFT peak 
+  for (int i=0;i<SAMPLES;i++){
+    signal_abcissa[i]=float(i)*float(SAMPLE_FREQ)/(float(SAMPLES));
+  }
 }
 
 void loop() {
@@ -101,22 +165,17 @@ void loop() {
 
   //buffers are full and ready for FFT & clasisfier
   if(sample_n==SAMPLES-1){
-    //make FFT of all axis
+    //Prepare sample for classification
     FFT.Windowing(FFT_WIN_TYPE_HAMMING);
-    for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=x_axis[i];
-    FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i]=float(FFT_amp[i]);
+    add_to_sample_to_pred(Sample_to_pred,x_axis,1);
+    add_to_sample_to_pred(Sample_to_pred,y_axis,2);
+    add_to_sample_to_pred(Sample_to_pred,z_axis,3);
 
-    for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=y_axis[i];
-    FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+SAMPLES]=float(FFT_amp[i]);
-    
-    for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=z_axis[i];
-    FFT.FFT();
-    for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+2*SAMPLES]=float(FFT_amp[i]);
     //perform classifier model
 
     classifier_pred=clf.predict(Sample_to_pred);
+
+    //Meta-classifier
     if (classifier_pred!=current_pred){
       classifier_counter++;
     }
@@ -127,6 +186,7 @@ void loop() {
       current_pred=classifier_pred;
       current_pred=0;
     }
+  
     Serial.print("ACC state:");Serial.print(state);Serial.print(";Classifier state:");Serial.println(classifier_pred);
     sample_n=0;
   }
