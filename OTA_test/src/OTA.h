@@ -5,7 +5,7 @@
 
 // Define WiFi credentials
 #define ssid "DaniS24"
-#define password "nineplusten"
+#define w_password "nineplusten"
 
 // Define server details and file path
 #define HOST "raw.githubusercontent.com"

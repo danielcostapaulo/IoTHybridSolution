@@ -4,6 +4,95 @@
 #include "Kmeans.h"
 #include "peakfinder1_peak.h"
 #include "OTA.h"
+#include <WiFi.h>
+#include <Arduino_MQTT_Client.h>
+#include <ThingsBoard.h>
+
+//Thingsboard atributes
+constexpr char WIFI_SSID[] = "DaniS24";
+constexpr char WIFI_PASSWORD[] = "nineplusten";
+constexpr char TOKEN[] = "W53xWNA8w2B7L4dONFja";
+constexpr char THINGSBOARD_SERVER[] = "demo.thingsboard.io";
+constexpr uint16_t THINGSBOARD_PORT = 1883U;
+constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
+constexpr size_t MAX_ATTRIBUTES = 2U;
+constexpr int16_t telemetrySendInterval = 2000U;
+
+//Thingsboard variables
+WiFiClient wifiClient;
+Arduino_MQTT_Client mqttClient(wifiClient);
+ThingsBoardSized<Default_Fields_Amount, Default_Subscriptions_Amount, MAX_ATTRIBUTES> tb(mqttClient, MAX_MESSAGE_SIZE);
+constexpr char LED_MODE_ATTR[] = "ledMode";
+volatile bool attributesChanged = false;
+volatile int ledMode = 0;
+uint32_t previousStateChange;
+uint32_t previousDataSend;
+constexpr std::array<const char *, 1U> CLIENT_ATTRIBUTES_LIST = {
+  LED_MODE_ATTR
+};
+
+//Thingsboard functions
+void InitWiFi() {
+  Serial.println("Connecting to AP ...");
+  // Attempting to establish a connection to the given WiFi network
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    // Delay 500ms until a connection has been succesfully established
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to AP");
+}
+const bool reconnect() {
+  // Check to ensure we aren't connected yet
+  const wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    return true;
+  }
+
+  // If we aren't establish a new connection to the given WiFi network
+  InitWiFi();
+  return true;
+}
+void processSetLedMode(const JsonVariantConst &data, JsonDocument &response) {
+  Serial.println("Received the update RPC method");
+
+  // Process data
+  int new_mode = data;
+
+  Serial.print("Mode to change: ");
+  Serial.println(new_mode);
+  StaticJsonDocument<1> response_doc;
+
+  if (new_mode != 0 && new_mode != 1) {
+    response_doc["error"] = "Unknown mode!";
+    response.set(response_doc);
+    return;
+  }
+
+  ledMode = new_mode;
+
+  attributesChanged = true;
+
+  // Returning current mode
+  response_doc["newMode"] = (int)ledMode;
+  response.set(response_doc);
+}
+const std::array<RPC_Callback, 1U> callbacks = {
+  RPC_Callback{ "setLedMode", processSetLedMode }
+};
+
+void processClientAttributes(const JsonObjectConst &data) {
+  for (auto it = data.begin(); it != data.end(); ++it) {
+    if (strcmp(it->key().c_str(), LED_MODE_ATTR) == 0) {
+      const uint16_t new_mode = it->value().as<uint16_t>();
+      ledMode = new_mode;
+    }
+  }
+}
+const Attribute_Request_Callback<MAX_ATTRIBUTES> attribute_client_request_callback(&processClientAttributes, CLIENT_ATTRIBUTES_LIST.cbegin(), CLIENT_ATTRIBUTES_LIST.cend());
+
+
 
 #define INT_1 1
 #define GT_pin 2
@@ -33,6 +122,7 @@ int sample_n=0;
 int FFTbuffer[SAMPLES];   // FFT sample buffer
 float FFT_amp[SAMPLES];   // FFT output
 FFT_handler FFT=FFT_handler(SAMPLES,1, FFTbuffer, FFT_amp);
+
 //FFT PEAK
 #define PEAK_N 6
 #define PEAK_THRESHOLD 0
@@ -70,7 +160,10 @@ void setup() {
   // Initalize serial connection
   Serial.begin(115200);
   delay(1000);
-  
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount failed, please wait");
+    return;
+  }
   pinMode(GT_pin, INPUT);
   pinMode(INT_1, OUTPUT);
   digitalWrite(INT_1, LOW);
@@ -104,15 +197,76 @@ void setup() {
   for (int i=0;i<SAMPLES;i++){
     signal_abcissa[i]=float(i)*float(SAMPLE_FREQ)/(float(SAMPLES));
   }
+  //Thingsboard+OTA
+  InitWiFi();
+
 }
 
 void loop() {
+  //--------------Thingsboard+OTA------------------
+  if (!reconnect()) {
+    return;
+  }
+  if (!tb.connected()) {
+    // Connect to the ThingsBoard
+    Serial.print("Connecting to: ");
+    Serial.print(THINGSBOARD_SERVER);
+    Serial.print(" with token ");
+    Serial.println(TOKEN);
+    if (!tb.connect(THINGSBOARD_SERVER, TOKEN, THINGSBOARD_PORT)) {
+      Serial.println("Failed to connect");
+      return;
+    }
+    // Sending a MAC address as an attribute
+    tb.sendAttributeData("macAddress", WiFi.macAddress().c_str());
+
+    Serial.println("Subscribing for RPC...");
+    // Perform a subscription. All consequent data processing will happen in
+    // processSetLedState() and processSetLedMode() functions,
+    // as denoted by callbacks array.
+    if (!tb.RPC_Subscribe(callbacks.cbegin(), callbacks.cend())) {
+      Serial.println("Failed to subscribe for RPC");
+      return;
+    }
+
+    Serial.println("Subscribe done");
+
+    // Request current states of client attributes
+    if (!tb.Client_Attributes_Request(attribute_client_request_callback)) {
+      Serial.println("Failed to request for client attributes");
+      return;
+    }
+  }
+  //check if its requesting update
+  if(ledMode==1){
+    tb.disconnect();
+    if(checkFileFromServer()){
+      performOTAUpdateFromSPIFFS();
+    }
+  }
+
+  // Sending telemetry every telemetrySendInterval time
+  if (millis() - previousDataSend > telemetrySendInterval) {
+    previousDataSend = millis();
+    tb.sendTelemetryData("temperature", random(10, 20));
+    tb.sendAttributeData("rssi", WiFi.RSSI());
+    tb.sendAttributeData("channel", WiFi.channel());
+    tb.sendAttributeData("bssid", WiFi.BSSIDstr().c_str());
+    tb.sendAttributeData("localIp", WiFi.localIP().toString().c_str());
+    tb.sendAttributeData("ssid", WiFi.SSID().c_str());
+    tb.sendAttributeData("program","Kmeans");
+  }
+
+  tb.loop();
+//-----------------------------------------------------
+
   //checks for ACC DT status
   if (mems_event) {
     int output=Acc.Get_MLC_Output();
     getMLCStatus(output);
     mems_event=0;
   }
+
   //checks GT for ON/OFF if available
   int button_state=digitalRead(GT_pin);
   if (digitalRead(GT_pin)==HIGH) GT=1;
@@ -189,26 +343,6 @@ void loop() {
     else{
       Serial.print("+");Serial.println(kmeans_state);
     }
-    /*
-    if(kmeans_state==-2){
-      delay(100);
-      for(int i=0;i<50;i++){
-        anomaly_to_print=clf.get_anomaly(i);
-        Serial.print("*");
-        for(int j=0;j<SAMPLES*3;j++){
-          if(j<SAMPLES*3-1){
-            Serial.print(anomaly_to_print[j]);Serial.print(",");
-          }
-          else{
-            Serial.println(anomaly_to_print[j]);
-          };
-        }
-        delay(100);
-
-      }
-      Serial.println("c");
-    }
-    */
   }
 }
 

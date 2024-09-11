@@ -2,7 +2,7 @@
 
 void connectToWiFi() {
   // Begin connecting to WiFi using the provided SSID and password
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, w_password);
 
   // Display connection progress
   Serial.print("Connecting to WiFi");
@@ -21,31 +21,39 @@ void connectToWiFi() {
 int checkFileFromServer() {
   WiFiClientSecure client;
   client.setInsecure(); // Set client to allow insecure connections
+  client.setTimeout(1000000);
 
   if (client.connect(HOST, PORT)) { // Connect to the server
     Serial.println("Connected to server");
     client.print("GET " + String(PATH) + " HTTP/1.1\r\n"); // Send HTTP GET request
     client.print("Host: " + String(HOST) + "\r\n"); // Specify the host
-    client.println("Connection: close\r\n"); // Close connection after response
+    client.print("Connection: keep-alive\r\n");
     client.println(); // Send an empty line to indicate end of request headers
 
     bool endOfHeaders = false;
     String headers = "";
     String http_response_code = "error";
-    const size_t bufferSize = 1024; // Buffer size for reading data
+    const size_t bufferSize = 512; // Buffer size for reading data
     uint8_t buffer[bufferSize];
-
+    int total_bytes;
+    String line="";
+    int total_bytes_read=0;
     // Loop to read HTTP response headers
     while (client.connected() && !endOfHeaders) {
       if (client.available()) {
         char c = client.read();
         headers += c;
+        if(c!='\n') line+=c;
         if (headers.startsWith("HTTP/1.1")) {
           http_response_code = headers.substring(9, 12);
+        }
+        if(line.startsWith("Content-Length") && c=='\n'){
+          total_bytes=line.substring(16).toInt();
         }
         if (headers.endsWith("\r\n\r\n")) { // Check for end of headers
           endOfHeaders = true;
         }
+        if(c=='\n') line=""; 
       }
     }
 
@@ -58,13 +66,21 @@ int checkFileFromServer() {
         return 0;
       }
       // Loop to read and write raw data to file
-      while (client.connected()) {
+      while (client.connected() && total_bytes_read<total_bytes) {
         if (client.available()) {
-          size_t bytesRead = client.readBytes(buffer, bufferSize);
-          if(bytesRead>0){
-            file.write(buffer, bytesRead); // Write data to file
+          size_t bytesRead;
+          if(total_bytes-total_bytes_read<bufferSize){
+            bytesRead = client.readBytes(buffer, total_bytes-total_bytes_read);
           }
+          else{
+            bytesRead = client.readBytes(buffer, bufferSize);
+          }
+          total_bytes_read+=bytesRead;
+          file.write(buffer, bytesRead); // Write data to file
         }
+      }
+      if(!client.connected()){
+
       }
       file.close(); // Close the file
       client.stop(); // Close the client connection

@@ -15,12 +15,12 @@
 
 
 
-constexpr char WIFI_SSID[] = "MEO-A600E0";
-constexpr char WIFI_PASSWORD[] = "f1ca76e7f4";
+constexpr char WIFI_SSID[] = "DaniS24";
+constexpr char WIFI_PASSWORD[] = "nineplusten";
 
 // See https://thingsboard.io/docs/getting-started-guides/helloworld/
 // to understand how to obtain an access token
-constexpr char TOKEN[] = "DlrFvqezcvvPmS1KqIJO";
+constexpr char TOKEN[] = "aQpwkAEivfUwjpeQ2pEO";
 
 // Thingsboard we want to establish a connection too
 constexpr char THINGSBOARD_SERVER[] = "iot.istartlab.tecnico.ulisboa.pt";
