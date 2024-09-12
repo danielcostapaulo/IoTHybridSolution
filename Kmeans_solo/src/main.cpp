@@ -159,11 +159,13 @@ float std_ard(int* vector,int size){
 void setup() {
   // Initalize serial connection
   Serial.begin(115200);
+  SPIFFS.format();
   delay(1000);
   if (!SPIFFS.begin(true)) {
     Serial.println("SPIFFS Mount failed, please wait");
     return;
   }
+  
   pinMode(GT_pin, INPUT);
   pinMode(INT_1, OUTPUT);
   digitalWrite(INT_1, LOW);
@@ -199,6 +201,7 @@ void setup() {
   }
   //Thingsboard+OTA
   InitWiFi();
+  tb.disconnect();
 
 }
 

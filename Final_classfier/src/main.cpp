@@ -197,6 +197,7 @@ void setup() {
     Serial.println("SPIFFS Mount failed, please wait");
     return;
   }
+  SPIFFS.format();
   pinMode(GT_pin, INPUT);
   pinMode(INT_1, OUTPUT);
   digitalWrite(INT_1, LOW);
@@ -232,6 +233,7 @@ void setup() {
   }
   //Thingsboard+OTA
   InitWiFi();
+  tb.disconnect();
 }
 
 void loop() {
