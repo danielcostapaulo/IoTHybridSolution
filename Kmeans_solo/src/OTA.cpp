@@ -33,7 +33,7 @@ int checkFileFromServer() {
     bool endOfHeaders = false;
     String headers = "";
     String http_response_code = "error";
-    const size_t bufferSize = 256; // Buffer size for reading data
+    const size_t bufferSize = 512; // Buffer size for reading data
     uint8_t buffer[bufferSize];
     int total_bytes;
     String line="";

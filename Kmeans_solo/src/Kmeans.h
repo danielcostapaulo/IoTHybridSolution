@@ -2,7 +2,7 @@
 #define KMEANS_H
 
 #define SAMPLES 256
-#define N_OF_CLUSTERS 15
+#define N_OF_CLUSTERS 10
 
 class Kmeans_OT{
   public:

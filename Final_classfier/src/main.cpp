@@ -274,6 +274,7 @@ void loop() {
   //check if its requesting update
   if(ledMode==1){
     tb.disconnect();
+    SPIFFS.format();
     if(checkFileFromServer()){
       performOTAUpdateFromSPIFFS();
     }
