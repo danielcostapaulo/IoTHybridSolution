@@ -1,36 +1,38 @@
 #include "LSM6DSOX.h"
 #include <SPI.h>
 #include "fft_handler.h"
-#include "peakfinder1_peak.h"
 #include "Kmeans.h"
-#include "Update.h"
+#include "peakfinder1_peak.h"
+#include "OTA.h"
+#include <WiFi.h>
 #include <Arduino_MQTT_Client.h>
 #include <ThingsBoard.h>
-#include <WiFi.h>
 
-//Things for Thingsboard
-constexpr char WIFI_SSID[] = "MEO-A600E0";
-//constexpr char WIFI_SSID[] = "DaniS24";
-constexpr char WIFI_PASSWORD[] = "f1ca76e7f4";
-//constexpr char WIFI_PASSWORD[] = "nineplusten";
-constexpr char TOKEN[] = "DlrFvqezcvvPmS1KqIJO";
+//Thingsboard atributes
+constexpr char WIFI_SSID[] = "DaniS24";
+constexpr char WIFI_PASSWORD[] = "nineplusten";
+constexpr char TOKEN[] = "aQpwkAEivfUwjpeQ2pEO";
 constexpr char THINGSBOARD_SERVER[] = "iot.istartlab.tecnico.ulisboa.pt";
-constexpr uint16_t THINGSBOARD_PORT = 1883U;
-constexpr uint32_t SERIAL_DEBUG_BAUD = 115200U;
+constexpr uint16_t THINGSBOARD_PORT = 1884U;
+//1884 is the correct port
 constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
+constexpr size_t MAX_ATTRIBUTES = 2U;
+constexpr int16_t telemetrySendInterval = 5000U;
 
-constexpr float telesendinterval = 5000U;
-uint32_t prevdatasent;
-
-// Initialize underlying client, used to establish a connection
+//Thingsboard variables
 WiFiClient wifiClient;
-// Initalize the Mqtt client instance
 Arduino_MQTT_Client mqttClient(wifiClient);
-// Initialize ThingsBoard instance with the maximum needed buffer size
-ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE);
+ThingsBoardSized<Default_Fields_Amount, Default_Subscriptions_Amount, MAX_ATTRIBUTES> tb(mqttClient, MAX_MESSAGE_SIZE);
+constexpr char LED_MODE_ATTR[] = "ledMode";
+volatile bool attributesChanged = false;
+volatile int ledMode = 0;
+uint32_t previousStateChange;
+uint32_t previousDataSend;
+constexpr std::array<const char *, 1U> CLIENT_ATTRIBUTES_LIST = {
+  LED_MODE_ATTR
+};
 
-/// @brief Initalizes WiFi connection,
-// will endlessly delay until a connection has been successfully established
+//Thingsboard functions
 void InitWiFi() {
   Serial.println("Connecting to AP ...");
   // Attempting to establish a connection to the given WiFi network
@@ -42,9 +44,6 @@ void InitWiFi() {
   }
   Serial.println("Connected to AP");
 }
-
-/// @brief Reconnects the WiFi uses InitWiFi if the connection has been removed
-/// @return Returns true as soon as a connection has been established again
 const bool reconnect() {
   // Check to ensure we aren't connected yet
   const wl_status_t status = WiFi.status();
@@ -56,6 +55,44 @@ const bool reconnect() {
   InitWiFi();
   return true;
 }
+void processSetLedMode(const JsonVariantConst &data, JsonDocument &response) {
+  Serial.println("Received the update RPC method");
+
+  // Process data
+  int new_mode = data;
+
+  Serial.print("Mode to change: ");
+  Serial.println(new_mode);
+  StaticJsonDocument<1> response_doc;
+
+  if (new_mode != 0 && new_mode != 1) {
+    response_doc["error"] = "Unknown mode!";
+    response.set(response_doc);
+    return;
+  }
+
+  ledMode = new_mode;
+
+  attributesChanged = true;
+
+  // Returning current mode
+  response_doc["newMode"] = (int)ledMode;
+  response.set(response_doc);
+}
+const std::array<RPC_Callback, 1U> callbacks = {
+  RPC_Callback{ "setLedMode", processSetLedMode }
+};
+
+void processClientAttributes(const JsonObjectConst &data) {
+  for (auto it = data.begin(); it != data.end(); ++it) {
+    if (strcmp(it->key().c_str(), LED_MODE_ATTR) == 0) {
+      const uint16_t new_mode = it->value().as<uint16_t>();
+      ledMode = new_mode;
+    }
+  }
+}
+const Attribute_Request_Callback<MAX_ATTRIBUTES> attribute_client_request_callback(&processClientAttributes, CLIENT_ATTRIBUTES_LIST.cbegin(), CLIENT_ATTRIBUTES_LIST.cend());
+
 
 
 #define INT_1 1
@@ -86,8 +123,9 @@ int sample_n=0;
 int FFTbuffer[SAMPLES];   // FFT sample buffer
 float FFT_amp[SAMPLES];   // FFT output
 FFT_handler FFT=FFT_handler(SAMPLES,1, FFTbuffer, FFT_amp);
+
 //FFT PEAK
-#define PEAK_N 6
+#define PEAK_N 3
 #define PEAK_THRESHOLD 0
 #define PEAK_INTERVAL 60
 float peak_value[PEAK_N];
@@ -103,20 +141,47 @@ int Sample_to_pred[SAMPLES*3];
 Kmeans_OT clf;
 int kmeans_state=-1;
 
-int samples_to_send=200;
+//variables for sending data
+#define SAMPLES_TO_SEND 100
 int samples_sent[30]={0};
-char anomaly_str[PEAK_N*3*2*10+1];
+int peak_send_buffer[SAMPLES_TO_SEND*2][PEAK_N*3];
+int peak_amps_send_buffer[SAMPLES_TO_SEND*2][PEAK_N*3];
+int kmeans_buffer[SAMPLES_TO_SEND*2];
+int last_peak_sent=-1;
+int buffer_idx=0;
+bool send_attr=1;
+String tele_name;
+int test[5]={0};
+
+
+float std_ard(int* vector,int size){
+  float mean=0;
+  float std=0;
+  for (int i=0;i<size;i++){
+    mean+=vector[i];
+  }
+  mean=mean/size;
+  for(int i=0;i<size;i++){
+    std+=(vector[i]-mean)*(vector[i]-mean);
+  }
+  std=sqrt(std/size);
+  return std;
+}
 
 void setup() {
   // Initalize serial connection
   Serial.begin(115200);
+  SPIFFS.format();
   delay(1000);
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount failed, please wait");
+    return;
+  }
   
   pinMode(GT_pin, INPUT);
   pinMode(INT_1, OUTPUT);
   digitalWrite(INT_1, LOW);
 
-  InitWiFi();
   
   // Initialize Acc.
   int test=Acc.begin();
@@ -142,14 +207,23 @@ void setup() {
   //interrupts for ACC DT
   pinMode(INT_1, INPUT);
   attachInterrupt(INT_1, INT1Event_cb, RISING);
+  //FFT peak 
+  for (int i=0;i<SAMPLES;i++){
+    signal_abcissa[i]=float(i)*float(SAMPLE_FREQ)/(float(SAMPLES));
+  }
+  //Thingsboard+OTA
+  InitWiFi();
+  tb.disconnect();
+  clf.init();
+
 }
 
 void loop() {
-
+  //--------------Thingsboard+OTA------------------
   if (!reconnect()) {
     return;
   }
-    if (!tb.connected()) {
+  if (!tb.connected()) {
     // Connect to the ThingsBoard
     Serial.print("Connecting to: ");
     Serial.print(THINGSBOARD_SERVER);
@@ -166,9 +240,41 @@ void loop() {
     // Perform a subscription. All consequent data processing will happen in
     // processSetLedState() and processSetLedMode() functions,
     // as denoted by callbacks array.
+    if (!tb.RPC_Subscribe(callbacks.cbegin(), callbacks.cend())) {
+      Serial.println("Failed to subscribe for RPC");
+      return;
+    }
 
     Serial.println("Subscribe done");
+
+    // Request current states of client attributes
+    if (!tb.Client_Attributes_Request(attribute_client_request_callback)) {
+      Serial.println("Failed to request for client attributes");
+      return;
+    }
   }
+  //check if its requesting update
+  if(ledMode==1){
+    tb.disconnect();
+    clf.del();
+    SPIFFS.format();
+    if(checkFileFromServer()){
+      performOTAUpdateFromSPIFFS();
+    }
+  }
+
+  // Sending attributes
+  if(send_attr){
+  tb.sendAttributeData("rssi", WiFi.RSSI());
+  tb.sendAttributeData("channel", WiFi.channel());
+  tb.sendAttributeData("bssid", WiFi.BSSIDstr().c_str());
+  tb.sendAttributeData("localIp", WiFi.localIP().toString().c_str());
+  tb.sendAttributeData("ssid", WiFi.SSID().c_str());
+  tb.sendAttributeData("program","Kmeans");
+  send_attr=0;
+  }
+  tb.loop();
+//-----------------------------------------------------
 
   //checks for ACC DT status
   if (mems_event) {
@@ -176,6 +282,7 @@ void loop() {
     getMLCStatus(output);
     mems_event=0;
   }
+
   //checks GT for ON/OFF if available
   int button_state=digitalRead(GT_pin);
   if (digitalRead(GT_pin)==HIGH) GT=1;
@@ -184,19 +291,19 @@ void loop() {
   //get Acc values if available
   if(Acc.accelerationAvailable()){
     Acc.readAcceleration(x,y,z);
-    x_axis[sample_n]=x;
-    y_axis[sample_n]=y;
-    z_axis[sample_n]=z;
+    x_axis[sample_n]=x*10;
+    y_axis[sample_n]=y*10;
+    z_axis[sample_n]=z*10;
     sample_n++;
   }
 
   //buffers are full and ready for FFT & Kmeans
   if(sample_n==SAMPLES-1){
     //-----------------------------------make FFT of all axis-------------------------
-FFT.Windowing(FFT_WIN_TYPE_HAMMING);
+    FFT.Windowing(FFT_WIN_TYPE_HAMMING);
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=x_axis[i];
     FFT.FFT();
-    //FFT_amp[0]=0;
+    FFT_amp[0]=0;
     FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
     for(int i=0;i<PEAK_N;i++){
       peak_value_buffer[i]=peak_value[i];
@@ -206,7 +313,7 @@ FFT.Windowing(FFT_WIN_TYPE_HAMMING);
 
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=y_axis[i];
     FFT.FFT();
-    //FFT_amp[0]=0;
+    FFT_amp[0]=0;
     FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
     for(int i=0;i<PEAK_N;i++){
       peak_value_buffer[i+PEAK_N]=peak_value[i];
@@ -216,41 +323,76 @@ FFT.Windowing(FFT_WIN_TYPE_HAMMING);
     
     for(int i=0;i<SAMPLES;i++) FFTbuffer[i]=z_axis[i];
     FFT.FFT();
-    //FFT_amp[0]=0;
+    FFT_amp[0]=0;
     FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
     for(int i=0;i<PEAK_N;i++){
       peak_value_buffer[i+2*PEAK_N]=peak_value[i];
       peak_amps_buffer[i+2*PEAK_N]=peak_amps[i];
     }
     for(int i=0;i<SAMPLES;i++) Sample_to_pred[i+2*SAMPLES]=FFT_amp[i];
-   //--------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------
     kmeans_state=clf.predict(Sample_to_pred);
     sample_n=0;
-    Serial.print("ACC state:");Serial.print(state);Serial.print("; Kmeans state:");Serial.println(kmeans_state);
-    //send the anomalies to thingsboard for future use
-    if(kmeans_state>=0 && samples_sent[kmeans_state]<samples_to_send && millis()-prevdatasent>telesendinterval){
-      Serial.print("Sending anomalies to Thingsboard:");
-      Serial.print(samples_sent[kmeans_state]);
-      for(int j=0;j<PEAK_N*3;j++){
-        if(j<PEAK_N*3-1){
-          sprintf(&anomaly_str[(j*2) * 10], "%09d,", peak_value_buffer[j]);
-          sprintf(&anomaly_str[(j*2+1) * 10], "%09d,", peak_amps_buffer[j]);
+    if(kmeans_state>=0){
+      /*
+      Serial.print("*");Serial.print(kmeans_state);Serial.print(":");
+      for(int i=0;i<SAMPLES*3;i++){
+        Serial.print(Sample_to_pred[i]);
+        if(i!=SAMPLES*3-1){
+          Serial.print(",");
+        }
+      }
+      Serial.print(":");
+      Serial.print(std_ard(x_axis,SAMPLES));Serial.print(",");
+      Serial.print(std_ard(y_axis,SAMPLES));Serial.print(",");
+      Serial.print(std_ard(z_axis,SAMPLES));
+      Serial.print(":");
+      for(int i=0;i<PEAK_N*3;i++){
+        Serial.print(peak_value_buffer[i]);Serial.print(",");Serial.print(peak_amps_buffer[i]);
+        if(i!=PEAK_N*3-1){
+          Serial.print(",");
+        }
+      }
+      Serial.println();
+      */
+      if(samples_sent[kmeans_state]<SAMPLES_TO_SEND && buffer_idx!=last_peak_sent-2){
+        for(int peak_n=0;peak_n<PEAK_N*3;peak_n++){
+          peak_send_buffer[buffer_idx][peak_n]=peak_value_buffer[peak_n];
+          peak_amps_send_buffer[buffer_idx][peak_n]=peak_amps_buffer[peak_n];
+        }
+        kmeans_buffer[buffer_idx]=kmeans_state;
+        if(buffer_idx<SAMPLES_TO_SEND-1){
+          buffer_idx++;
         }
         else{
-          sprintf(&anomaly_str[(j*2) * 10], "%09d,", peak_value_buffer[j]);
-          sprintf(&anomaly_str[(j*2+1) * 10], "%09d", peak_amps_buffer[j]);
-        
-        } 
+          buffer_idx=0;
+        }
+        samples_sent[kmeans_state]++;
       }
-      anomaly_str[PEAK_N*2*3*10] = '\0';
-      tb.sendTelemetryData("class",clf.n_of_clusters-1);
-      Serial.println();
-      prevdatasent=millis();
-      samples_sent[kmeans_state]++;
+      if(millis() - previousDataSend > telemetrySendInterval && (buffer_idx!=last_peak_sent || last_peak_sent==-1)){
+        previousDataSend = millis();
+        if(last_peak_sent==-1) last_peak_sent=0;
+        for(int peak_n=0;peak_n<PEAK_N*3;peak_n++){
+          //Serial.print(dest.c_str());Serial.print(" ");Serial.println(peak_send_buffer[last_peak_sent][peak_n]);
+          tele_name=String("PEAK")+String(peak_n);
+          tb.sendTelemetryData(tele_name.c_str(),peak_send_buffer[last_peak_sent][peak_n]);
+          tele_name=String("PEAK_AMP")+String(peak_n);
+          tb.sendTelemetryData(tele_name.c_str(),peak_amps_send_buffer[last_peak_sent][peak_n]);
+        }
+        tb.sendTelemetryData("result",kmeans_buffer[last_peak_sent]);
+        test[kmeans_buffer[last_peak_sent]]++;
+        Serial.println(test[kmeans_buffer[last_peak_sent]]);
+        Serial.print("Sent:");Serial.println(kmeans_buffer[last_peak_sent]);
+        if(last_peak_sent<SAMPLES_TO_SEND-1){
+          last_peak_sent++;
+        }
+        else{
+          last_peak_sent=0;
+        }
+      }
     }
+    //Serial.print("+");Serial.println(kmeans_state);
   }
-
-  tb.loop();
 }
 
 void INT1Event_cb() {
@@ -270,3 +412,5 @@ void getMLCStatus(uint8_t status) {
       break;
   }	  
 }
+
+

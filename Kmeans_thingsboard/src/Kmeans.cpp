@@ -5,14 +5,38 @@
 
 
 Kmeans_OT::Kmeans_OT(){
+    /*
     n_of_samples_to_train=50;
     switch_to_make_new_cluster=0;
     for(int i=0;i<50;i++){
         anomaly_samples[i][0]=-1;
     }
-    for(int i=0;i<20;i++){
+    for(int i=0;i<N_OF_CLUSTERS;i++){
         clusters[i][0]=-1;
     }
+    */
+   clusters=nullptr;
+   switch_to_make_new_cluster=0;
+   n_of_samples_to_train=50;
+}
+void Kmeans_OT::init(){
+    clusters=new int*[N_OF_CLUSTERS];
+    for(int i=0;i<N_OF_CLUSTERS;i++){
+        clusters[i]=new int[SAMPLES*3];
+    }
+    for(int i=0;i<50;i++){
+        anomaly_samples[i][0]=-1;
+    }
+    for(int i=0;i<N_OF_CLUSTERS;i++){
+        clusters[i][0]=-1;
+    }
+}
+void Kmeans_OT::del(){
+    for(int i=0;i<N_OF_CLUSTERS;i++){
+        delete[] clusters[i];
+    }
+    delete[] clusters;
+    clusters=nullptr;
 }
 Kmeans_OT::Kmeans_OT(int number_of_anomalies){
     n_of_samples_to_train=50;
@@ -20,7 +44,7 @@ Kmeans_OT::Kmeans_OT(int number_of_anomalies){
     for(int i=0;i<50;i++){
         anomaly_samples[i][0]=-1;
     }
-    for(int i=0;i<20;i++){
+    for(int i=0;i<N_OF_CLUSTERS;i++){
         clusters[i][0]=-1;
     }
 }
@@ -33,7 +57,7 @@ int Kmeans_OT::predict(int sample_to_pred[SAMPLES*3]){
     int result=-1;
     float dist=0;
     //There are no clusters, so all of samples are anomalies for the first cluster
-    if(n_of_clusters==0){
+    if(n_of_used_clusters==0){
         switch_to_make_new_cluster++;
         result=-1; 
         for(int features=0;features<SAMPLES*3;features++){
@@ -42,7 +66,7 @@ int Kmeans_OT::predict(int sample_to_pred[SAMPLES*3]){
         next_anomaly++;
     }
     else{
-        for(int cluster_n=0;cluster_n<n_of_clusters;cluster_n++){
+        for(int cluster_n=0;cluster_n<n_of_used_clusters;cluster_n++){
             dist=Kmeans_OT::eucledian_distance(clusters[cluster_n],sample_to_pred);
             if(min_aux==0){
                 min_dist=dist;
@@ -71,7 +95,7 @@ int Kmeans_OT::predict(int sample_to_pred[SAMPLES*3]){
         } 
     }
     if(switch_to_make_new_cluster>=n_of_samples_to_train){
-        if(n_of_clusters<20){
+        if(n_of_used_clusters<N_OF_CLUSTERS){
             make_new_cluster();
             return -2;
         }
@@ -100,13 +124,13 @@ void Kmeans_OT::make_new_cluster(){
         new_cluster[feature_n]=new_cluster[feature_n]/float(n_of_samples_to_train);
     }
     for(int features=0;features<SAMPLES*3;features++){
-        clusters[n_of_clusters][features]=int(new_cluster[features]);
+        clusters[n_of_used_clusters][features]=int(new_cluster[features]);
     }
     //get the max_dist of this cluster
     float new_max_dist=-1;
     float dist=0;
     for(int sample_n=0;sample_n<int(n_of_samples_to_train);sample_n++){
-        dist=eucledian_distance(anomaly_samples[sample_n],clusters[n_of_clusters]);
+        dist=eucledian_distance(anomaly_samples[sample_n],clusters[n_of_used_clusters]);
         distances[sample_n]=dist;
     }
     std::sort(std::begin(distances),std::end(distances));
@@ -129,8 +153,8 @@ void Kmeans_OT::make_new_cluster(){
     }
     new_max_dist=distances[last_element];
 
-    max_dist[n_of_clusters]=new_max_dist;
-    n_of_clusters++;
+    max_dist[n_of_used_clusters]=new_max_dist;
+    n_of_used_clusters++;
     switch_to_make_new_cluster=0;
     next_anomaly=0;
 }

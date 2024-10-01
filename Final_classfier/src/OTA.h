@@ -9,7 +9,7 @@
 
 // Define server details and file path
 #define HOST "raw.githubusercontent.com"
-#define PATH "/danielpaulinho/IST-vibration/main/Kmeans_solo/Kmeans.bin"
+#define PATH "/danielpaulinho/IST-vibration/main/Firmware/Kmeans.bin"
 #define PORT 443
 
 // Define the name for the downloaded firmware file

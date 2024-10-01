@@ -11,12 +11,12 @@
 //Thingsboard atributes
 constexpr char WIFI_SSID[] = "DaniS24";
 constexpr char WIFI_PASSWORD[] = "nineplusten";
-constexpr char TOKEN[] = "W53xWNA8w2B7L4dONFja";
-constexpr char THINGSBOARD_SERVER[] = "demo.thingsboard.io";
-constexpr uint16_t THINGSBOARD_PORT = 1883U;
+constexpr char TOKEN[] = "aQpwkAEivfUwjpeQ2pEO";
+constexpr char THINGSBOARD_SERVER[] = "iot.istartlab.tecnico.ulisboa.pt";
+constexpr uint16_t THINGSBOARD_PORT = 1884U;
 constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
 constexpr size_t MAX_ATTRIBUTES = 2U;
-constexpr int16_t telemetrySendInterval = 2000U;
+constexpr int16_t telemetrySendInterval = 5000U;
 
 //Thingsboard variables
 WiFiClient wifiClient;
@@ -131,6 +131,8 @@ float signal_abcissa[SAMPLES];
 float peak_value_buffer[PEAK_N*3];
 float peak_amps_buffer[PEAK_N*3];
 PeakFinder1 FFT_peak=PeakFinder1(SAMPLE_FREQ, SAMPLES,PEAK_N, peak_value, peak_amps, FFT_amp, signal_abcissa);
+
+bool send_attr=1;
 
 //Some variables and functions to sort the values based on frequency and not amplitude
 struct sort_array
@@ -281,7 +283,7 @@ void loop() {
   }
 
   // Sending telemetry every telemetrySendInterval time
-  if (millis() - previousDataSend > telemetrySendInterval) {
+  if (send_attr) {
     previousDataSend = millis();
     tb.sendTelemetryData("temperature", random(10, 20));
     tb.sendAttributeData("rssi", WiFi.RSSI());
@@ -290,6 +292,7 @@ void loop() {
     tb.sendAttributeData("localIp", WiFi.localIP().toString().c_str());
     tb.sendAttributeData("ssid", WiFi.SSID().c_str());
     tb.sendAttributeData("program","RF_model");
+    send_attr=0;
   }
 
   tb.loop();
@@ -340,6 +343,11 @@ void loop() {
     }
   
     Serial.print("ACC state:");Serial.print(state);Serial.print(";Classifier state:");Serial.println(classifier_pred);
+    if(millis() - previousDataSend > telemetrySendInterval){
+      previousDataSend=millis();
+      tb.sendTelemetryData("result",classifier_pred);
+      tb.loop();
+    }
     sample_n=0;
   }
 }
