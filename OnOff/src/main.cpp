@@ -15,15 +15,15 @@
 
 
 
-constexpr char WIFI_SSID[] = "DaniS24";
-constexpr char WIFI_PASSWORD[] = "nineplusten";
+constexpr char WIFI_SSID[] = "SSID";
+constexpr char WIFI_PASSWORD[] = "PASSWORD";
 
 // See https://thingsboard.io/docs/getting-started-guides/helloworld/
 // to understand how to obtain an access token
-constexpr char TOKEN[] = "aQpwkAEivfUwjpeQ2pEO";
+constexpr char TOKEN[] = "TOKEN";
 
 // Thingsboard we want to establish a connection too
-constexpr char THINGSBOARD_SERVER[] = "iot.istartlab.tecnico.ulisboa.pt";
+constexpr char THINGSBOARD_SERVER[] = "SERVER";
 // MQTT port used to communicate with the server, 1883 is the default unencrypted MQTT port.
 constexpr uint16_t THINGSBOARD_PORT = 1883U;
 
