@@ -18,3 +18,4 @@ The most important folders are:
 * HighLevel: All of the code is done in Python, from plotting and analysis of data and results to training and testing of ML models, among others.
 
 The Auxiliary folder contains subfolders that were chunks of code that are not relevant for the final solution.
+The Firmware folder contains the firmware that can be used to update the MCU trough OTA updates.
