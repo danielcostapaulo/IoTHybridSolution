@@ -22,8 +22,8 @@ float peak_value[PEAK_N];
 float peak_amps[PEAK_N];
 float signal_abcissa[SAMPLES];
 FFT_handler FFT(SAMPLES,1, FFT_buffer, FFT_amp);
-PeakFinder1 FFT_peak=PeakFinder1(SAMPLING_RATE, SAMPLES,PEAK_N, peak_value, peak_amps, FFT_amp, signal_abcissa);
-//PeakHandler FFT_peak=PeakHandler(SAMPLING_RATE, PEAK_N,SAMPLES, peak_value, peak_amps, FFT_amp, signal_abcissa);
+//PeakFinder1 FFT_peak=PeakFinder1(SAMPLING_RATE, SAMPLES,PEAK_N, peak_value, peak_amps, FFT_amp, signal_abcissa);
+PeakHandler FFT_peak=PeakHandler(SAMPLING_RATE, PEAK_N,SAMPLES, peak_value, peak_amps, FFT_amp, signal_abcissa);
 
 
  
@@ -33,13 +33,13 @@ int main(){
     }
     ofstream feature_file;          
     ifstream raw_file;
-    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC");
+    chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor");
     DIR *dr=opendir(".");
     struct dirent *en;
     if (dr) {
       while ((en = readdir(dr)) != NULL) {
         if(en->d_name[0]=='s' || en->d_name[0]=='l'){      
-            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC");
+            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/corrected_new_motor");
             //doing file name operations-----------------
             char raw_file_name[100];
             strcpy(raw_file_name,en->d_name);
@@ -53,7 +53,7 @@ int main(){
             char feature_file_name[100];
             strcpy(feature_file_name,raw_file_name);
             strcat(feature_file_name,"_Feature.txt");
-            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/CNC/Features");
+            chdir("C://Users/danip/OneDrive/Desktop/IST-vibration/Data/test/Features");
             cout<<"Performing feature extraction on file:";
             cout<<feature_file_name<<endl;
             feature_file.open(feature_file_name,ios::out);
@@ -123,7 +123,7 @@ int main(){
                         std=sqrt(std);
                         FFT.Windowing(WINDOW);
                         FFT.FFT();
-                        FFT_peak.get_peaks_made_algorithm1(PEAK_THRESHOLD,PEAK_INTERVAL);
+                        FFT_peak.PEAKS();
                         //FFT_peak.PEAKS();
                         for(int k=0;k<j;k++){
                             feature_file<<FFT_amp[k]<<" ";

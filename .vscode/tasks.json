@@ -2,14 +2,16 @@
     "tasks": [
         {
             "type": "cppbuild",
-            "label": "C/C++: gcc.exe build active file",
-            "command": "C:\\msys64\\mingw64\\bin\\gcc.exe",
+            "label": "C/C++: g++.exe build active file (MSYS2)",
+            "command": "C:\\msys64\\mingw64\\bin\\g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
-                "-g",
+                "-g++",
                 "${file}",
                 "-o",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe"
+                "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                "-I", "C:\\Users\\danip\\OneDrive\\Desktop\\IST-vibration\\it_test\\isotree\\include",
+                "FUCKYOU"
             ],
             "options": {
                 "cwd": "C:\\msys64\\mingw64\\bin"
@@ -25,14 +27,16 @@
         },
         {
             "type": "cppbuild",
-            "label": "C/C++: g++.exe build active file",
+            "label": "C/C++: g++.exe build active file (MinGW)",
             "command": "C:\\MinGW\\bin\\g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
-                "-g",
+                "-g++",
                 "${file}",
                 "-o",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe"
+                "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                "-I", "C:\\Users\\danip\\OneDrive\\Desktop\\IST-vibration\\it_test\\isotree\\include",
+                "lisotree"
             ],
             "options": {
                 "cwd": "${fileDirname}"
